@@ -38,7 +38,7 @@ def initialize_session_state(df):
         if st.session_state[STATE_TOTAL_QUESTIONS] > 0:
             st.session_state[STATE_QUESTION_INDEX] = random.randint(0, st.session_state[STATE_TOTAL_QUESTIONS] - 1)
         else:
-            st.session_state[STATE_QUESTION_INDEX] = -1 # 問題がない場合
+            st.session_state[STATE_QUESTION_INDEX] = -1  # 問題がない場合
         # 答えは非表示に
         st.session_state[STATE_SHOW_ANSWER] = False
 
@@ -93,6 +93,6 @@ if xls:
             # 答えを非表示にリセット
             st.session_state[STATE_SHOW_ANSWER] = False
             # 画面を再描画して次の問題を表示
-            st.experimental_rerun()
+            st.rerun() # ★★★ 修正点 ★★★
 else:
     st.info("学習を開始するには、`フラッシュカード.xlsx` ファイルを準備してください。")
