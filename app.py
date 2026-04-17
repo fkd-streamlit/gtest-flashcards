@@ -2,97 +2,81 @@ import streamlit as st
 import pandas as pd
 import random
 
-# --- 定数 ---
-EXCEL_FILE_PATH = 'フラッシュカード.xlsx'
-STATE_QUESTIONS = 'questions'
-STATE_QUESTION_INDEX = 'question_index'
-STATE_SHOW_ANSWER = 'show_answer'
-STATE_CHAPTER = 'selected_chapter'
-STATE_TOTAL_QUESTIONS = 'total_questions'
+st.set_page_config(page_title="G検定フラッシュカード", layout="centered")
+st.title("📚 G検定フラッシュカード")
 
-# --- 関数の定義 ---
-def load_excel_file(file_path):
-    """Excelファイルを読み込む"""
-    try:
-        return pd.ExcelFile(file_path)
-    except FileNotFoundError:
-        st.error(f"エラー: {file_path} が見つかりません。Q&Aを記載したExcelファイルを同じフォルダに配置してください。")
-        return None
+file_path = "フラッシュカード.xlsx"
+xls = pd.ExcelFile(file_path)
 
-def initialize_session_state(df):
-    """
-    章が変更された場合、またはセッションが初期化されていない場合に、
-    問題リストやインデックスをリセットする。
-    """
-    # st.session_state['current_chapter'] には selectbox の現在の値が自動で入る
-    current_selected_chapter = st.session_state['current_chapter_selector']
+chapter = st.selectbox("章を選択してください", xls.sheet_names)
+df = pd.read_excel(xls, sheet_name=chapter)
 
-    if STATE_CHAPTER not in st.session_state or st.session_state[STATE_CHAPTER] != current_selected_chapter:
-        # 選択された章を記録
-        st.session_state[STATE_CHAPTER] = current_selected_chapter
-        # 該当の章のデータフレームを辞書のリストに変換
-        questions_list = df.to_dict('records')
-        st.session_state[STATE_QUESTIONS] = questions_list
-        st.session_state[STATE_TOTAL_QUESTIONS] = len(questions_list)
-        # 最初の問題のインデックスをランダムに設定
-        if st.session_state[STATE_TOTAL_QUESTIONS] > 0:
-            st.session_state[STATE_QUESTION_INDEX] = random.randint(0, st.session_state[STATE_TOTAL_QUESTIONS] - 1)
-        else:
-            st.session_state[STATE_QUESTION_INDEX] = -1  # 問題がない場合
-        # 答えは非表示に
-        st.session_state[STATE_SHOW_ANSWER] = False
+# 4択カラムが無い古いシートにも耐えるために get で取る
+for col in ["Choice_A","Choice_B","Choice_C","Choice_D","Correct","Explanation","Pitfall"]:
+    if col not in df.columns:
+        df[col] = ""
 
+# Question がある行だけを候補にする（1行＝1問運用推奨）
+df = df[df["Question"].notna()].copy()
 
-# --- UIの描画 ---
-st.title("📚 G検定フラッシュカード (改良版)")
+if "current_index" not in st.session_state:
+    st.session_state.current_index = None
+if "show_answer" not in st.session_state:
+    st.session_state.show_answer = False
+if "selected" not in st.session_state:
+    st.session_state.selected = None
 
-# Excelファイルの読み込み
-xls = load_excel_file(EXCEL_FILE_PATH)
+if st.button("次の質問"):
+    st.session_state.current_index = random.choice(df.index.tolist())
+    st.session_state.show_answer = False
+    st.session_state.selected = None
 
-if xls:
-    # --- 章の選択 ---
-    # `key` を設定することで、st.session_stateから値を取得できる
-    selected_chapter = st.selectbox("章を選択してください", xls.sheet_names, key='current_chapter_selector')
+if st.session_state.current_index is not None:
+    row = df.loc[st.session_state.current_index]
 
-    # 選択された章のデータを読み込み
-    df = pd.read_excel(xls, sheet_name=selected_chapter).dropna(subset=['Question', 'Answer'])
+    st.markdown(f"### ❓ 質問\n{row['Question']}")
 
-    # --- セッション状態の管理 ---
-    initialize_session_state(df)
+    # 4択モード判定：Choice_A が埋まっているか
+    is_mcq = str(row.get("Choice_A","")).strip() != ""
 
-    if st.session_state[STATE_QUESTION_INDEX] == -1:
-        st.warning("この章には有効な問題がありません。")
+    if is_mcq:
+        options = ["A", "B", "C", "D"]
+        choice_text = {
+            "A": row.get("Choice_A",""),
+            "B": row.get("Choice_B",""),
+            "C": row.get("Choice_C",""),
+            "D": row.get("Choice_D",""),
+        }
+
+        st.session_state.selected = st.radio(
+            "選択肢",
+            options,
+            format_func=lambda x: f"{x}. {choice_text[x]}",
+            index=0 if st.session_state.selected is None else options.index(st.session_state.selected)
+        )
+
+        if st.button("回答する"):
+            st.session_state.show_answer = True
+
+        if st.session_state.show_answer:
+            correct = str(row.get("Correct","")).strip().upper()
+            if st.session_state.selected == correct:
+                st.success("✅ 正解！")
+            else:
+                st.error(f"❌ 不正解（正解：{correct}）")
+
+            # 解説表示
+            if str(row.get("Answer","")).strip():
+                st.markdown(f"**答え（要点）:** {row['Answer']}")
+            if str(row.get("Explanation","")).strip():
+                st.markdown(f"**解説:** {row['Explanation']}")
+            if str(row.get("Pitfall","")).strip():
+                st.warning(f"⚠ ひっかけポイント\n\n{row['Pitfall']}")
+
     else:
-        # --- 現在の問題と解答を取得 ---
-        question_data = st.session_state[STATE_QUESTIONS][st.session_state[STATE_QUESTION_INDEX]]
-        question = question_data['Question']
-        answer = question_data['Answer']
-        
-        # --- 進捗表示 ---
-        progress_text = f"問題 {st.session_state[STATE_QUESTION_INDEX] + 1} / {st.session_state[STATE_TOTAL_QUESTIONS]}"
-        st.progress( (st.session_state[STATE_QUESTION_INDEX] + 1) / st.session_state[STATE_TOTAL_QUESTIONS], text=progress_text)
+        # 従来Q&Aモード
+        if st.button("答えを見る"):
+            st.session_state.show_answer = True
 
-        # --- 問題表示 ---
-        st.subheader("問題")
-        st.info(question)
-
-        # --- 解答表示 ---
-        if st.button('答えを見る'):
-            st.session_state[STATE_SHOW_ANSWER] = True
-
-        if st.session_state[STATE_SHOW_ANSWER]:
-            st.subheader("解答")
-            st.success(answer)
-        
-        st.divider() # 区切り線
-
-        # --- 次の問題へ ---
-        if st.button('次の問題へ'):
-            # 新しいランダムなインデックスをセット
-            st.session_state[STATE_QUESTION_INDEX] = random.randint(0, st.session_state[STATE_TOTAL_QUESTIONS] - 1)
-            # 答えを非表示にリセット
-            st.session_state[STATE_SHOW_ANSWER] = False
-            # 画面を再描画して次の問題を表示
-            st.rerun() # ★★★ 修正点 ★★★
-else:
-    st.info("学習を開始するには、`フラッシュカード.xlsx` ファイルを準備してください。")
+        if st.session_state.show_answer:
+            st.markdown(f"### ✅ 答え\n{row.get('Answer','')}")
