@@ -68,16 +68,54 @@ if st.session_state.finished:
         st.stop()
     st.stop()
 
-# ─── 章選択 ───────────────────────────────────────────────────
+# ─── 章・難易度選択 ─────────────────────────────────────────────
 chapter = st.selectbox("章を選択してください", xls.sheet_names)
+
 df = pd.read_excel(xls, sheet_name=chapter)
 
-for col in ["Choice_A","Choice_B","Choice_C","Choice_D","Correct","Explanation","Pitfall"]:
+# カラム名の前後空白を除去
+df.columns = [str(c).strip() for c in df.columns]
+
+# 必要カラムがない場合は空欄で補完
+for col in ["Level", "Choice_A", "Choice_B", "Choice_C", "Choice_D", "Correct", "Answer", "Explanation", "Pitfall"]:
     if col not in df.columns:
         df[col] = ""
 
-df = df[df["Question"].notna()].reset_index(drop=True)
+# Question が空の行を除外
+df = df[df["Question"].notna()].copy()
+
+# Level の空白除去
+df["Level"] = df["Level"].astype(str).str.strip()
+
+# 難易度リスト作成
+level_order = ["初級", "中級", "上級"]
+available_levels = [lv for lv in level_order if lv in df["Level"].unique()]
+
+if not available_levels:
+    st.warning("この章には Level が設定された問題がありません。Excelの Level 列を確認してください。")
+    st.stop()
+
+selected_level = st.selectbox("難易度を選択してください", available_levels)
+
+# 難易度で絞り込み
+df = df[df["Level"] == selected_level].reset_index(drop=True)
+
+st.caption(f"現在の出題範囲：{chapter} / {selected_level} / {len(df)}問")
+
+if df.empty:
+    st.warning("この条件に合う問題がありません。")
+    st.stop()
+
 all_indices = df.index.tolist()
+
+# 章や難易度を変えたときに、前の問題をリセット
+filter_key = f"{chapter}_{selected_level}"
+if st.session_state.get("filter_key") != filter_key:
+    st.session_state.filter_key = filter_key
+    st.session_state.current_index = None
+    st.session_state.show_answer = False
+    st.session_state.selected = None
+    st.session_state.recent_indices = []
 
 # ─── ボタン行 ─────────────────────────────────────────────────
 col_next, col_end = st.columns([3, 1])
