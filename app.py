@@ -10,7 +10,7 @@ st.title("📚 G検定フラッシュカード")
 # --- Excelファイル読み込み ---
 # Streamlitのファイルアップローダーを使うか、ローカルパスを指定するか選択
 # ここではローカルパスを直接指定しています。
-file_path = "フラッシュカード _20260501_v1.xlsx"
+file_path = "フラッシュカード.xlsx"
 
 try:
     xls = pd.ExcelFile(file_path)
